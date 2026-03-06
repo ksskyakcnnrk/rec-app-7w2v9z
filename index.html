@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="robots" content="noindex, nofollow">
     <title>Voice Recorder</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
             touch-action: manipulation;
@@ -18,72 +18,132 @@
             justify-content: center;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             overflow: hidden;
+            position: relative;
         }
+
+        /* 左上の録音ボタンエリア */
+        .top-left-controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            z-index: 10;
+        }
+
+        /* 30pxに近いサイズ(スマホタップを考慮して44px)の録音ボタン */
+        .record-btn-small {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: white;
+            border: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            transition: transform 0.1s, opacity 0.2s;
+            cursor: pointer;
+        }
+
+        .record-btn-small:active:not(:disabled) {
+            transform: scale(0.9);
+        }
+
+        .record-btn-small:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .record-btn {
+            background-color: #ef4444;
+        }
+
+        .stop-btn {
+            background-color: #374151;
+        }
+
+        .timer-display {
+            font-size: 0.9rem;
+            font-family: monospace;
+            color: #4b5563;
+        }
+
+        /* 中央の再生ボタンエリア */
         .app-container {
             width: 100%;
             height: 100%;
             display: flex;
-            flex-direction: row;
+            justify-content: center;
             align-items: center;
-            justify-content: space-evenly;
-            padding: 2rem;
-            gap: 2rem;
         }
-        .action-button {
-            width: 40%;
-            height: 60%;
-            border-radius: 2.5rem;
+
+        /* 画面中央の大きな再生ボタン (角丸四角) */
+        .play-btn-large {
+            width: 90vw;
+            height: 60vh;
+            max-width: 800px;
+            max-height: 600px;
+            border-radius: 50px;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            font-size: 2.5rem;
+            font-size: 9rem;
             font-weight: bold;
-            transition: all 0.2s ease;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            color: white;
+            background-color: #3b82f6;
             border: none;
+            box-shadow: 0 15px 40px rgba(59, 130, 246, 0.4);
+            transition: all 0.2s ease;
             cursor: pointer;
         }
-        .action-button:active {
+
+        .play-btn-large:active:not(:disabled) {
             transform: scale(0.95);
-            box-shadow: 0 5px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4);
         }
-        .action-button:disabled {
-            opacity: 0.3;
+
+        .play-btn-large:disabled {
+            background-color: #9ca3af;
+            box-shadow: none;
             cursor: not-allowed;
+            opacity: 0.5;
         }
-        .record-btn { background-color: #ef4444; color: white; }
-        .stop-btn { background-color: #374151; color: white; }
-        .play-btn { background-color: #3b82f6; color: white; }
-        .timer-display {
-            font-size: 1.5rem;
-            margin-top: 1rem;
-            font-family: monospace;
-        }
+
         .status-msg {
             position: absolute;
             bottom: 5%;
-            font-size: 1.2rem;
+            font-size: 1rem;
             color: #6b7280;
             text-align: center;
             width: 100%;
+            padding: 0 20px;
+            box-sizing: border-box;
         }
     </style>
 </head>
+
 <body>
 
-    <div class="app-container">
-        <button id="recordStopBtn" class="action-button record-btn">
-            <span id="btnLabel">開始</span>
-            <div id="timer" class="timer-display" style="display: none;">00:00</div>
+    <div class="top-left-controls">
+        <button id="recordStopBtn" class="record-btn-small record-btn">
+            <span id="btnLabel">録音</span>
         </button>
+        <div id="timer" class="timer-display" style="display: none;">00:00</div>
+    </div>
 
-        <button id="playBtn" class="action-button play-btn" disabled>
+    <div class="app-container">
+        <button id="playBtn" class="play-btn-large" disabled>
             再生
         </button>
     </div>
 
-    <div id="status" class="status-msg">「開始」を押してマイクを許可してください</div>
+    <div id="status" class="status-msg">「録音」を押してマイクを許可してください</div>
 
     <script>
         let mediaRecorder;
@@ -92,7 +152,11 @@
         let timerInterval;
         let seconds = 0;
         let isRecording = false;
-        let mainStream = null; // マイクストリームを保持する変数
+
+        // =============== 💡 連打防止用の安全フラグ ===============
+        let isProcessing = false;
+
+        let mainStream = null;
 
         const recordStopBtn = document.getElementById('recordStopBtn');
         const btnLabel = document.getElementById('btnLabel');
@@ -100,13 +164,11 @@
         const playBtn = document.getElementById('playBtn');
         const statusMsg = document.getElementById('status');
 
-        // マイクの準備（初回のみ許可を求める）
         async function prepareMicrophone() {
             if (mainStream) return true;
             try {
                 mainStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                statusMsg.innerText = "準備完了";
-                btnLabel.innerText = "録音";
+                statusMsg.innerText = "待機中";
                 return true;
             } catch (err) {
                 console.error(err);
@@ -116,60 +178,106 @@
         }
 
         async function startRecording() {
-            // 初回、またはストリームが途切れている場合に準備
+            // 処理中の場合は何もしない（連打防止）
+            if (isProcessing) return;
+            isProcessing = true;
+            recordStopBtn.disabled = true; // 処理中はボタンを無効化
+
+            if (audio && !audio.paused) {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+
             const hasPermission = await prepareMicrophone();
-            if (!hasPermission) return;
+            if (!hasPermission) {
+                isProcessing = false;
+                recordStopBtn.disabled = false;
+                return;
+            }
 
             try {
-                // 既存のストリームを使ってMediaRecorderを作成
-                mediaRecorder = new MediaRecorder(mainStream);
+                // =============== 💡 ここで変数を初期化 ===============
+                // JavaScriptの配列クリア処理にかかる時間は0.001秒未満です（ラグは全くありません）
                 audioChunks = [];
+                mediaRecorder = new MediaRecorder(mainStream);
 
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data.size > 0) audioChunks.push(e.data);
                 };
 
+                // =============== 💡 録音停止時の処理 ===============
                 mediaRecorder.onstop = () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/mp4' });
+                    const mimeType = mediaRecorder.mimeType || (audioChunks[0] && audioChunks[0].type) || 'audio/mp4';
+                    const audioBlob = new Blob(audioChunks, { type: mimeType });
                     const audioUrl = URL.createObjectURL(audioBlob);
                     audio = new Audio(audioUrl);
+
                     playBtn.disabled = false;
                     statusMsg.innerText = "録音完了";
+
+                    isRecording = false;
+
+                    // 録音データの生成という重要な処理が終わった後にフラグを解除（ここが連打によるバグの解決策です）
+                    isProcessing = false;
+                    recordStopBtn.disabled = false;
+
+                    recordStopBtn.classList.replace('stop-btn', 'record-btn');
+                    btnLabel.innerText = "録音";
+                    timerDisplay.style.display = 'none';
+                    timerDisplay.innerText = "00:00";
                 };
 
                 mediaRecorder.start();
                 isRecording = true;
-                
+
                 recordStopBtn.classList.replace('record-btn', 'stop-btn');
                 btnLabel.innerText = "停止";
                 playBtn.disabled = true;
-                
+
                 seconds = 0;
                 timerDisplay.style.display = 'block';
+                timerDisplay.innerText = "00:00";
                 timerInterval = setInterval(() => {
                     seconds++;
                     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
                     const s = (seconds % 60).toString().padStart(2, '0');
                     timerDisplay.innerText = `${m}:${s}`;
                 }, 1000);
-                
+
                 statusMsg.innerText = "録音中...";
+
+                // 開始処理が正常に終わったら連打防止を解除
+                isProcessing = false;
+                recordStopBtn.disabled = false;
             } catch (err) {
                 console.error(err);
                 statusMsg.innerText = "エラーが発生しました。";
+                isProcessing = false;
+                recordStopBtn.disabled = false;
             }
         }
 
         function stopRecording() {
-            if (mediaRecorder && mediaRecorder.state !== "inactive") {
-                mediaRecorder.stop();
-                // ※ここでは stream.stop() は呼び出さない（マイクを掴んだままにするため）
-            }
-            isRecording = false;
-            recordStopBtn.classList.replace('stop-btn', 'record-btn');
-            btnLabel.innerText = "録音";
+            // 処理中の場合は何もしない
+            if (isProcessing) return;
+            isProcessing = true;
+
+            // データ保存が完了するまで録音ボタンを押せないようにする
+            recordStopBtn.disabled = true;
+            statusMsg.innerText = "保存中...";
+
             clearInterval(timerInterval);
-            timerDisplay.style.display = 'none';
+
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                // stopメソッドを呼ぶと、非同期でmediaRecorder.onstopが実行されます
+                mediaRecorder.stop();
+            } else {
+                isProcessing = false;
+                recordStopBtn.disabled = false;
+                recordStopBtn.classList.replace('stop-btn', 'record-btn');
+                btnLabel.innerText = "録音";
+                timerDisplay.style.display = 'none';
+            }
         }
 
         recordStopBtn.addEventListener('click', () => {
@@ -190,4 +298,5 @@
         });
     </script>
 </body>
+
 </html>
