@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- 検索エンジンにインデックスされないようにする設定 -->
     <meta name="robots" content="noindex, nofollow">
     <title>Voice Recorder</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -74,19 +73,17 @@
 <body>
 
     <div class="app-container">
-        <!-- 録音/停止ボタン -->
         <button id="recordStopBtn" class="action-button record-btn">
-            <span id="btnLabel">録音</span>
+            <span id="btnLabel">開始</span>
             <div id="timer" class="timer-display" style="display: none;">00:00</div>
         </button>
 
-        <!-- 再生ボタン -->
         <button id="playBtn" class="action-button play-btn" disabled>
             再生
         </button>
     </div>
 
-    <div id="status" class="status-msg">マイクを許可して開始</div>
+    <div id="status" class="status-msg">「開始」を押してマイクを許可してください</div>
 
     <script>
         let mediaRecorder;
@@ -95,6 +92,7 @@
         let timerInterval;
         let seconds = 0;
         let isRecording = false;
+        let mainStream = null; // マイクストリームを保持する変数
 
         const recordStopBtn = document.getElementById('recordStopBtn');
         const btnLabel = document.getElementById('btnLabel');
@@ -102,12 +100,29 @@
         const playBtn = document.getElementById('playBtn');
         const statusMsg = document.getElementById('status');
 
-        async function startRecording() {
+        // マイクの準備（初回のみ許可を求める）
+        async function prepareMicrophone() {
+            if (mainStream) return true;
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                
-                // iPad Safari用
-                mediaRecorder = new MediaRecorder(stream);
+                mainStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                statusMsg.innerText = "準備完了";
+                btnLabel.innerText = "録音";
+                return true;
+            } catch (err) {
+                console.error(err);
+                statusMsg.innerText = "マイク許可が必要です。ブラウザ設定を確認してください。";
+                return false;
+            }
+        }
+
+        async function startRecording() {
+            // 初回、またはストリームが途切れている場合に準備
+            const hasPermission = await prepareMicrophone();
+            if (!hasPermission) return;
+
+            try {
+                // 既存のストリームを使ってMediaRecorderを作成
+                mediaRecorder = new MediaRecorder(mainStream);
                 audioChunks = [];
 
                 mediaRecorder.ondataavailable = (e) => {
@@ -141,14 +156,14 @@
                 statusMsg.innerText = "録音中...";
             } catch (err) {
                 console.error(err);
-                statusMsg.innerText = "エラー: マイクの使用を許可してください。";
+                statusMsg.innerText = "エラーが発生しました。";
             }
         }
 
         function stopRecording() {
             if (mediaRecorder && mediaRecorder.state !== "inactive") {
                 mediaRecorder.stop();
-                mediaRecorder.stream.getTracks().forEach(t => t.stop());
+                // ※ここでは stream.stop() は呼び出さない（マイクを掴んだままにするため）
             }
             isRecording = false;
             recordStopBtn.classList.replace('stop-btn', 'record-btn');
