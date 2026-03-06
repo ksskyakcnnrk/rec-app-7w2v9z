@@ -212,6 +212,13 @@
                     const audioUrl = URL.createObjectURL(audioBlob);
                     audio = new Audio(audioUrl);
 
+                    // 💡iPad/iOS特有のバグ対策：マイクが起動したままだと再生音が聞こえなくなるため
+                    // 録音完了時にマイクの接続を完全に切り、OSのマイクアイコンを消す
+                    if (mainStream) {
+                        mainStream.getTracks().forEach(track => track.stop());
+                        mainStream = null;
+                    }
+
                     playBtn.disabled = false;
                     statusMsg.innerText = "録音完了";
 
